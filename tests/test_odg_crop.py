@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import odg_crop  # noqa: E402
+import odg_text  # noqa: E402
 
 PRIVATE = Path(__file__).parent / "fixtures" / "private"
 
@@ -134,3 +135,54 @@ def test_cracha_real_recupera_as_fotos():
             found = True
             break
     assert found
+
+
+@pytest.mark.skipif(not (PRIVATE / "cracha.cdr").exists(), reason="fixture privada ausente")
+def test_cracha_real_texto_dentro_da_arte():
+    """O dono cobrou duas vezes: o nome do gerente subia em cima da borda do
+    crachá e o slogan encostava no título. Mede no PDF, não no olho."""
+    import tempfile
+    import app
+    work = Path(tempfile.mkdtemp())
+    pdf, fixes = app.convert_cdr_to_pdf(PRIVATE / "cracha.cdr", work)
+    assert fixes["moved_texts"] > 0 and fixes["condensed_texts"] > 0, fixes
+    page = pymupdf.open(pdf)[0]
+    CM = 2.54 / 72
+
+    # bordas dos dois crachás: retângulos altos com traço
+    bordas = [d["rect"] for d in page.get_drawings()
+              if d.get("color") and d["rect"].height * CM > 7 and d["rect"].width * CM > 3]
+    assert len(bordas) == 2, bordas
+
+    spans = [(s["text"].strip(), [v * CM for v in s["bbox"]], s["size"], s["font"])
+             for b in page.get_text("dict")["blocks"] for l in b.get("lines", []) for s in l["spans"]
+             if s["text"].strip()]
+
+    # 1) nenhum texto passa da borda do crachá em que está
+    for texto, (x0, y0, x1, y1), _size, _font in spans:
+        borda = next((r for r in bordas if r.x0 * CM - 0.3 <= x0 <= r.x1 * CM), None)
+        assert borda is not None, texto
+        assert x1 <= borda.x1 * CM, f"{texto!r} passa da borda: {x1:.2f} > {borda.x1*CM:.2f}"
+
+    # 2) existe uma faixa limpa entre a tinta do título e a do slogan —
+    # medido na imagem, que é o que se vê, e não pela métrica da fonte
+    # o crachá da esquerda: o de menor x entre os dois
+    titulo = min((s for s in spans if s[0].startswith("Internet")), key=lambda s: s[1][0])
+    slogan = min((s for s in spans if s[0].startswith("A  s u a")), key=lambda s: s[1][0])
+    clip = pymupdf.Rect(titulo[1][0] / CM, titulo[1][1] / CM,
+                        titulo[1][2] / CM, slogan[1][3] / CM)
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(8, 8), clip=clip, alpha=False)
+    com_tinta = [any(sum(pix.pixel(x, y)[:3]) < 400 for x in range(pix.width))
+                 for y in range(pix.height)]
+    faixas, inicio = [], None
+    for y, tem in enumerate(com_tinta):
+        if tem and inicio is None:
+            inicio = y
+        elif not tem and inicio is not None:
+            faixas.append((inicio, y))
+            inicio = None
+    if inicio is not None:
+        faixas.append((inicio, pix.height))
+    # a última faixa é o slogan; tem de estar separada do que vem antes
+    assert len(faixas) >= 2, f"título e slogan colados: faixas de tinta {faixas}"
+    assert faixas[-1][0] > faixas[-2][1], faixas

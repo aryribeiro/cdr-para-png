@@ -18,8 +18,9 @@ Escopo único e fixo — este app não lida com nenhum outro formato de entrada 
 
 1. **LibreOffice Draw** (headless) lê o CDR com a biblioteca **libcdr** e grava um ODG.
 2. **odg_crop.py** reaplica os recortes de imagem que a libcdr perde: no Corel, uma foto recortada (PowerClip ou ferramenta de corte) chega ao ODG como um polígono invisível com o retângulo do recorte seguido da imagem inteira, que cobre o resto do desenho. O módulo corta os pixels na proporção do polígono e encolhe a moldura. Recortes não retangulares viram o retângulo envolvente.
-3. **LibreOffice** exporta o ODG corrigido para PDF, enxergando as fontes de `static/fonts/` (181 arquivos, mesma coleção do app libreoffice) via fontconfig. Sem isso, uma fonte ausente no servidor vira outra de largura diferente e o texto estoura a arte.
-4. **PyMuPDF** rasteriza a primeira página em PNG na resolução calculada.
+3. **odg_text.py** corrige a posição e a largura do texto artístico. A libcdr dobra a largura da caixa do texto antes de entregá-la, e o topo dessa caixa é a altura de maiúscula, não o topo da ascendente da fonte. O módulo devolve o texto à largura que o CorelDRAW registrou (condensando quando a nossa fonte é mais larga) e sobe a moldura a diferença entre ascendente e maiúscula. Sem isso, no crachá de exemplo o nome subia em cima da borda e o título encostava no slogan.
+4. **LibreOffice** exporta o ODG corrigido para PDF, enxergando as fontes de `static/fonts/` (181 arquivos, mesma coleção do app libreoffice) via fontconfig. Sem isso, uma fonte ausente no servidor vira outra de largura diferente e o texto estoura a arte.
+5. **PyMuPDF** rasteriza a primeira página em PNG na resolução calculada.
 
 Limites honestos, medidos num corpus de 84 CDR reais (do CorelDRAW 7 ao X4+): cores CMYK e Pantone saem em RGB; efeitos exclusivos do Corel (envelope, lente, extrusão) podem não aparecer; fontes ausentes no servidor são substituídas; texto cirílico de alguns arquivos das versões 8 e 9 sai como "?????" (limitação da libcdr). Um SVG, PDF ou ODG renomeado para `.cdr` é recusado antes de chegar ao LibreOffice, porque ele "converteria" sem nunca ler CorelDRAW. Se a libcdr abrir o arquivo mas devolver página vazia, o app avisa em vez de entregar um PNG em branco.
 
@@ -67,6 +68,7 @@ cdr-para-png/
 ├── requirements.txt    # streamlit, pymupdf
 ├── packages.txt        # Pacotes do sistema (LibreOffice Draw, fontes)
 ├── odg_crop.py         # Reaplica recortes de imagem perdidos pela libcdr
+├── odg_text.py         # Corrige posição e largura do texto artístico
 ├── static/fonts/       # Fontes que o LibreOffice usa na conversão
 ├── tests/              # pytest + fixtures CDR reais + Dockerfile do smoke
 ├── NOTICE.md           # Licenças dos componentes

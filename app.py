@@ -17,6 +17,7 @@ from xml.sax.saxutils import escape
 import pymupdf
 
 from odg_crop import restore_image_crops
+from odg_text import fix_text_boxes
 
 # ---------------------------------------------------------------------------
 # SETUP DO PATH DO LIBREOFFICE
@@ -377,18 +378,25 @@ def run_soffice_convert(input_path: Path, output_dir: Path, filter_name: str, ex
 
 
 def convert_cdr_to_pdf(input_path: Path, output_dir: Path):
-    """CDR -> ODG -> (recortes de imagem restaurados) -> PDF.
+    """CDR -> ODG -> (recortes de imagem e texto corrigidos) -> PDF.
     A libcdr descarta o recorte das fotos (PowerClip/crop) e entrega a
     imagem inteira por cima do desenho; o ODG intermediário guarda o
-    retângulo do recorte e o odg_crop o reaplica antes do PDF.
-    Devolve (pdf_path, imagens_recortadas)."""
+    retângulo do recorte e o odg_crop o reaplica antes do PDF. O odg_text
+    corrige a posição e a largura do texto artístico (ver o módulo).
+    Devolve (pdf_path, correções)."""
     odg_path = run_soffice_convert(input_path, output_dir, "odg:draw8", "odg")
+    fixes = {"cropped_images": 0, "moved_texts": 0, "condensed_texts": 0}
     try:
-        cropped = restore_image_crops(odg_path)
+        fixes["cropped_images"] = restore_image_crops(odg_path)
     except Exception:
-        cropped = 0  # ODG intocado: melhor a imagem inteira do que nenhuma
+        pass  # ODG intocado: melhor a imagem inteira do que nenhuma
+    try:
+        t = fix_text_boxes(odg_path, STATIC_FONTS_DIR)
+        fixes["moved_texts"], fixes["condensed_texts"] = t["moved"], t["condensed"]
+    except Exception:
+        pass  # sem a correção o texto sai como a libcdr entregou
     pdf_path = run_soffice_convert(odg_path, output_dir, "pdf:draw_pdf_Export", "pdf")
-    return pdf_path, cropped
+    return pdf_path, fixes
 
 
 # ---------------------------------------------------------------------------
@@ -499,11 +507,11 @@ def convert_cdr_to_png(input_file: str):
             raise ConversionError(f"não é cdr: {label}")
 
         with get_conversion_slots():
-            pdf_path, cropped = convert_cdr_to_pdf(input_path, work_dir)
+            pdf_path, fixes = convert_cdr_to_pdf(input_path, work_dir)
             png, info = pdf_to_png(pdf_path)
 
         info["version"] = label
-        info["cropped_images"] = cropped
+        info.update(fixes)
         return png, info
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)

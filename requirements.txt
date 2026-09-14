@@ -1,3 +1,4 @@
 streamlit==1.39.0
 pymupdf==1.28.2
 defusedxml==0.7.1
+fonttools==4.65.0

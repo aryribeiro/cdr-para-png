@@ -10,6 +10,7 @@ Este projeto depende de componentes de terceiros com licenças próprias. Nenhum
 | **PyMuPDF** (MuPDF) | rasterização em PNG | AGPL-3.0 (Artifex). O uso comercial sem disponibilizar o código-fonte exige licença comercial da Artifex |
 | **Streamlit** | interface web | Apache-2.0 |
 | **defusedxml** | leitura segura do ODG intermediário | PSF-2.0 |
+| **fontTools** | métricas das fontes para corrigir a posição e a largura do texto | MIT |
 | **Liberation** e **DejaVu** (pacotes do sistema) | fontes substitutas para textos do desenho | SIL OFL 1.1 / Bitstream Vera |
 
 A pasta `static/fonts/` traz a mesma coleção de fontes usada pelos apps irmãos do autor (Liberation, DejaVu, Carlito, Noto e fontes de sistema como Arial, Impact e Wingdings), para que os textos do desenho saiam com a fonte que o CorelDRAW usou. As famílias livres seguem suas licenças (SIL OFL 1.1, Bitstream Vera, Apache-2.0); as fontes de sistema são incluídas só para fidelidade de conversão e permanecem sob os termos de seus fabricantes.
