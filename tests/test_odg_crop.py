@@ -116,9 +116,21 @@ def test_cracha_real_recupera_as_fotos():
     # o título usa Impact; com static/fonts o LibreOffice embute a Impact de
     # verdade em vez de substituir por uma fonte larga que estoura a arte
     assert any("Impact" in f for f in info["fonts"]), info["fonts"]
-    # o nome fica visível de novo: o PDF intermediário tinha o texto, a imagem
-    # final precisa ter tinta escura na faixa do nome (y ~ 24% da altura)
+    # os dois nomes existem; a libcdr do Debian bookworm (LibreOffice 7.4)
+    # descartava o parágrafo com dois idiomas — em trixie e no Cloud não
+    assert "Rodrigo Denicolo" in info["text"] and "Carlos Eduardo" in info["text"], info["text"]
     pix = pymupdf.Pixmap(png)
-    y = int(pix.height * 0.24)
-    dark = sum(1 for x in range(int(pix.width * 0.05), int(pix.width * 0.3)) if sum(pix.pixel(x, y)[:3]) < 200)
-    assert dark > 20
+    # a imagem é da arte (dois crachás lado a lado, mais larga que alta),
+    # não da página A4 em pé
+    assert info["cropped_to_art"] and info["page_height_cm"] > 29
+    assert pix.width > pix.height, (pix.width, pix.height)
+    assert info["width_cm"] < 15 and info["height_cm"] < 12
+    # o nome fica visível de novo: a imagem final precisa ter tinta escura em
+    # alguma linha da faixa do nome (entre 65% e 80% da altura da arte)
+    found = False
+    for y in range(int(pix.height * 0.65), int(pix.height * 0.80), 8):
+        dark = sum(1 for x in range(int(pix.width * 0.02), int(pix.width * 0.45), 4) if sum(pix.pixel(x, y)[:3]) < 200)
+        if dark > 5:
+            found = True
+            break
+    assert found

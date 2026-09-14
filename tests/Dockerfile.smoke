@@ -2,7 +2,10 @@
 # do packages.txt instalados por apt e o requirements.txt por pip. Prova que o
 # LibreOffice do Debian lê CDR (libcdr) e que a suíte passa em Linux.
 # Uso: docker build -f tests/Dockerfile.smoke -t cdr-smoke . && docker run --rm cdr-smoke
-FROM python:3.12-slim-bookworm
+# trixie = mesma base do Streamlit Cloud (LibreOffice 25.2 / libcdr 0.1.8);
+# no bookworm (LibreOffice 7.4) a libcdr antiga descarta parágrafos de texto
+# com mais de um idioma, o que NÃO acontece em produção.
+FROM python:3.12-slim-trixie
 WORKDIR /app
 COPY packages.txt .
 RUN apt-get update \

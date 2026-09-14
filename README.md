@@ -6,7 +6,7 @@ Aplicação web em Python/Streamlit que converte desenhos **CDR (CorelDRAW) para
 
 | Entrada | Saída |
 | --- | --- |
-| `.cdr` (CorelDRAW 7 a X7; versões mais antigas e mais novas dependem do arquivo) | **`.png`** da primeira página (fundo branco, 4000 px no lado maior) |
+| `.cdr` (CorelDRAW 7 a X7; versões mais antigas e mais novas dependem do arquivo) | **`.png`** da arte da primeira página (recortado ao que está desenhado, com folga de 3%; fundo branco, 4000 px no lado maior) |
 
 Escopo único e fixo — este app não lida com nenhum outro formato de entrada ou saída.
 

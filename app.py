@@ -96,6 +96,8 @@ TARGET_MIME = "image/png"
 
 LONG_SIDE_PX = 4000        # lado maior da imagem, em pixels
 SOFFICE_TIMEOUT = 180      # segundos por tentativa
+ART_MARGIN = 0.03          # folga em volta da arte (fração do lado maior da arte)
+ART_MIN_PT = 20            # arte menor que isto (em pontos) = usar a página inteira
 
 
 class ConversionError(RuntimeError):
@@ -392,8 +394,46 @@ def convert_cdr_to_pdf(input_path: Path, output_dir: Path):
 # ---------------------------------------------------------------------------
 # ETAPA 2: PDF -> PNG COM O PyMuPDF (1ª página, 4000 px no lado maior)
 # ---------------------------------------------------------------------------
+def art_bbox(page):
+    """Retângulo que envolve tudo que está desenhado na página (vetores,
+    textos e imagens), limitado à página. O PNG é da ARTE, não da folha:
+    um crachá numa página A4 não vira uma imagem quase toda branca."""
+    rect = pymupdf.Rect()
+    page_area = page.rect.get_area()
+    # extended=True traz o clip vigente ("scissor") de cada desenho: as faixas
+    # de um degradê são maiores que a forma que preenchem e só o clip as
+    # limita. Sem isso a arte "cresce" até o retângulo do degradê.
+    clips = []  # pilha de clips por nível: um clip vale para os desenhos mais fundos que o seguem
+    for d in page.get_drawings(extended=True):
+        level = d.get("level", 0)
+        del clips[level:]
+        if d.get("type") == "clip":
+            scissor = d.get("scissor")
+            clips.append(pymupdf.Rect(scissor) if scissor else page.rect)
+            continue
+        r = pymupdf.Rect(d["rect"])
+        for c in clips:
+            r &= c
+        if r.is_empty:
+            continue
+        if r.get_area() >= page_area * 0.95:
+            continue  # fundo da página (a libcdr emite um retângulo branco)
+        rect |= r
+    for b in page.get_text("blocks"):
+        rect |= pymupdf.Rect(b[:4])
+    for img in page.get_images(full=False):
+        for r in page.get_image_rects(img[0]):
+            rect |= r
+    rect &= page.rect
+    if rect.is_empty or rect.width < ART_MIN_PT or rect.height < ART_MIN_PT:
+        return page.rect
+    margin = max(rect.width, rect.height) * ART_MARGIN
+    rect = pymupdf.Rect(rect.x0 - margin, rect.y0 - margin, rect.x1 + margin, rect.y1 + margin) & page.rect
+    return rect
+
+
 def pdf_to_png(pdf_path: Path):
-    """Devolve (png_bytes, info). info = páginas, tamanho da página em cm."""
+    """Devolve (png_bytes, info). info = páginas, tamanho da arte e da página em cm."""
     try:
         doc = pymupdf.open(str(pdf_path))
     except Exception:
@@ -419,18 +459,24 @@ def pdf_to_png(pdf_path: Path):
                      "conseguiu interpretar o conteúdo deste CDR.")
             raise ConversionError("página vazia")
 
-        zoom = LONG_SIDE_PX / max(width_pt, height_pt)
-        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+        clip = art_bbox(page)
+        zoom = LONG_SIDE_PX / max(clip.width, clip.height)
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=clip, alpha=False)
         png = pix.tobytes("png")
         info = {
             "pages": doc.page_count,
-            "width_cm": width_pt / 72 * 2.54,
-            "height_cm": height_pt / 72 * 2.54,
+            "width_cm": clip.width / 72 * 2.54,
+            "height_cm": clip.height / 72 * 2.54,
+            "page_width_cm": width_pt / 72 * 2.54,
+            "page_height_cm": height_pt / 72 * 2.54,
+            "cropped_to_art": clip != page.rect,
             "has_text": has_text,
             "has_images": has_images,
             # nomes das fontes embutidas no PDF: prova de qual fonte o
             # LibreOffice usou de fato (ex.: "Impact" e não a substituta)
             "fonts": sorted({f[3].split("+")[-1] for f in page.get_fonts(full=False)}),
+            # amostra do texto extraível (só para testes/diagnóstico)
+            "text": page.get_text("text")[:2000],
         }
         return png, info
     finally:
@@ -513,7 +559,10 @@ def main():
     st.image(png_bytes, use_column_width=True)
 
     size = f"{info['width_cm']:.1f} × {info['height_cm']:.1f} cm".replace(".", ",")
-    detail = f"CorelDRAW {info['version']} · {size}"
+    detail = f"CorelDRAW {info['version']} · arte {size}"
+    if info["cropped_to_art"]:
+        page_size = f"{info['page_width_cm']:.1f} × {info['page_height_cm']:.1f} cm".replace(".", ",")
+        detail += f" (página {page_size})"
     if info["cropped_images"]:
         n = info["cropped_images"]
         detail += f" · recorte de {n} {'imagens' if n > 1 else 'imagem'} restaurado"

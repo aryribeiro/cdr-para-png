@@ -87,7 +87,8 @@ def test_cdr_para_png(name, version):
     OUTPUT.mkdir(exist_ok=True)
     png, info = app.convert_cdr_to_png(str(FIXTURES / name))
     width, height = png_size(png)
-    assert max(width, height) == app.LONG_SIDE_PX
+    # o recorte à arte é arredondado pelo PyMuPDF: tolerância de 1 px
+    assert abs(max(width, height) - app.LONG_SIDE_PX) <= 1
     assert info["pages"] >= 1
     assert info["width_cm"] > 0 and info["height_cm"] > 0
     if version:
