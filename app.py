@@ -15,6 +15,8 @@ import random
 
 import pymupdf
 
+from odg_crop import restore_image_crops
+
 # ---------------------------------------------------------------------------
 # SETUP DO PATH DO LIBREOFFICE
 # ---------------------------------------------------------------------------
@@ -84,7 +86,8 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 # CONVERSÃO: CDR (CorelDRAW) -> PNG
 # Escopo único e fixo — este app não lida com nenhum outro par de formatos.
-# Cadeia: LibreOffice Draw (libcdr) -> PDF -> PyMuPDF -> PNG da 1ª página.
+# Cadeia: LibreOffice Draw (libcdr) -> ODG -> recortes de imagem restaurados
+# (odg_crop) -> LibreOffice -> PDF -> PyMuPDF -> PNG da 1ª página.
 # ---------------------------------------------------------------------------
 SOURCE_EXT = ".cdr"
 TARGET_EXT = "png"
@@ -244,9 +247,10 @@ def run_lo_subprocess_with_backoff(cmd_args, env, max_retries=3, base_delay=0.5,
 _LOADED_AS = re.compile(r"as a (\w+) document")
 
 
-def convert_cdr_to_pdf(input_path: Path, output_dir: Path) -> Path:
-    """Converte o .cdr em PDF com o LibreOffice Draw. Perfil de usuário
-    próprio por execução: sem isso, conversões simultâneas falham caladas."""
+def run_soffice_convert(input_path: Path, output_dir: Path, filter_name: str, ext: str) -> Path:
+    """Roda `soffice --convert-to` com perfil de usuário próprio por execução
+    (sem isso, conversões simultâneas falham caladas). Devolve o caminho do
+    arquivo gerado ou levanta ConversionError com a mensagem já exibida."""
     profile_dir = Path(tempfile.gettempdir()) / f"lo_profile_{uuid.uuid4().hex}"
     try:
         env = os.environ.copy()
@@ -261,7 +265,7 @@ def convert_cdr_to_pdf(input_path: Path, output_dir: Path) -> Path:
                 # as_uri() gera file:///C:/... no Windows e file:///tmp/... no
                 # Linux; "file://" + caminho cru falha silenciosamente no Windows
                 f"-env:UserInstallation={profile_dir.as_uri()}",
-                "--convert-to", "pdf:draw_pdf_Export",
+                "--convert-to", filter_name,
                 "--outdir", str(output_dir),
                 str(input_path),
             ]
@@ -269,11 +273,11 @@ def convert_cdr_to_pdf(input_path: Path, output_dir: Path) -> Path:
             if result and result.returncode == 0:
                 break
 
-        pdf_path = output_dir / (input_path.stem + ".pdf")
+        out_path = output_dir / (input_path.stem + "." + ext)
         if result is None:
             st.error("❌ O LibreOffice não respondeu a tempo. Tente um arquivo menor.")
             raise ConversionError("timeout")
-        if not pdf_path.exists() or pdf_path.stat().st_size == 0:
+        if not out_path.exists() or out_path.stat().st_size == 0:
             # "source file could not be loaded": a libcdr não interpretou este CDR
             st.error("❌ Não foi possível ler este CDR. A versão pode ser muito antiga, "
                      "muito nova, ou o arquivo está corrompido.")
@@ -284,9 +288,24 @@ def convert_cdr_to_pdf(input_path: Path, output_dir: Path) -> Path:
         if m and m.group(1) != "Draw":
             st.error("❌ Este arquivo não é um desenho do CorelDRAW.")
             raise ConversionError(f"carregado como {m.group(1)}")
-        return pdf_path
+        return out_path
     finally:
         shutil.rmtree(profile_dir, ignore_errors=True)
+
+
+def convert_cdr_to_pdf(input_path: Path, output_dir: Path):
+    """CDR -> ODG -> (recortes de imagem restaurados) -> PDF.
+    A libcdr descarta o recorte das fotos (PowerClip/crop) e entrega a
+    imagem inteira por cima do desenho; o ODG intermediário guarda o
+    retângulo do recorte e o odg_crop o reaplica antes do PDF.
+    Devolve (pdf_path, imagens_recortadas)."""
+    odg_path = run_soffice_convert(input_path, output_dir, "odg:draw8", "odg")
+    try:
+        cropped = restore_image_crops(odg_path)
+    except Exception:
+        cropped = 0  # ODG intocado: melhor a imagem inteira do que nenhuma
+    pdf_path = run_soffice_convert(odg_path, output_dir, "pdf:draw_pdf_Export", "pdf")
+    return pdf_path, cropped
 
 
 # ---------------------------------------------------------------------------
@@ -350,10 +369,11 @@ def convert_cdr_to_png(input_file: str):
             raise ConversionError(f"não é cdr: {label}")
 
         with get_conversion_slots():
-            pdf_path = convert_cdr_to_pdf(input_path, work_dir)
+            pdf_path, cropped = convert_cdr_to_pdf(input_path, work_dir)
             png, info = pdf_to_png(pdf_path)
 
         info["version"] = label
+        info["cropped_images"] = cropped
         return png, info
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -409,7 +429,11 @@ def main():
     st.image(png_bytes, use_column_width=True)
 
     size = f"{info['width_cm']:.1f} × {info['height_cm']:.1f} cm".replace(".", ",")
-    st.caption(f"CorelDRAW {info['version']} · {size}")
+    detail = f"CorelDRAW {info['version']} · {size}"
+    if info["cropped_images"]:
+        n = info["cropped_images"]
+        detail += f" · recorte de {n} imagem{'ns' if n > 1 else ''} restaurado"
+    st.caption(detail)
     if info["pages"] > 1:
         st.warning(f"⚠️ O desenho tem {info['pages']} páginas; só a primeira foi convertida.")
 

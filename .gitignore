@@ -57,3 +57,6 @@ smoke-output/
 # Logs
 *.log
 old.py
+
+# Fixtures com dados pessoais (fotos, nomes, telefones): ficam so na maquina
+tests/fixtures/private/

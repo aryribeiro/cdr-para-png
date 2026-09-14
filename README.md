@@ -16,8 +16,10 @@ Escopo único e fixo — este app não lida com nenhum outro formato de entrada 
 
 ## ⚙️ Como converte
 
-1. **LibreOffice Draw** (headless) lê o CDR com a biblioteca **libcdr** e grava um PDF.
-2. **PyMuPDF** rasteriza a primeira página em PNG na resolução calculada.
+1. **LibreOffice Draw** (headless) lê o CDR com a biblioteca **libcdr** e grava um ODG.
+2. **odg_crop.py** reaplica os recortes de imagem que a libcdr perde: no Corel, uma foto recortada (PowerClip ou ferramenta de corte) chega ao ODG como um polígono invisível com o retângulo do recorte seguido da imagem inteira, que cobre o resto do desenho. O módulo corta os pixels na proporção do polígono e encolhe a moldura. Recortes não retangulares viram o retângulo envolvente.
+3. **LibreOffice** exporta o ODG corrigido para PDF.
+4. **PyMuPDF** rasteriza a primeira página em PNG na resolução calculada.
 
 Limites honestos, medidos num corpus de 84 CDR reais (do CorelDRAW 7 ao X4+): cores CMYK e Pantone saem em RGB; efeitos exclusivos do Corel (envelope, lente, extrusão) podem não aparecer; fontes ausentes no servidor são substituídas; texto cirílico de alguns arquivos das versões 8 e 9 sai como "?????" (limitação da libcdr). Um SVG, PDF ou ODG renomeado para `.cdr` é recusado antes de chegar ao LibreOffice, porque ele "converteria" sem nunca ler CorelDRAW. Se a libcdr abrir o arquivo mas devolver página vazia, o app avisa em vez de entregar um PNG em branco.
 

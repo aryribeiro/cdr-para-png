@@ -9,6 +9,7 @@ Este projeto depende de componentes de terceiros com licenças próprias. Nenhum
 | **LibreOffice Draw** com **libcdr** | leitura do CDR e conversão para PDF, em processo separado | MPL-2.0 (LibreOffice, libcdr, librevenge) |
 | **PyMuPDF** (MuPDF) | rasterização em PNG | AGPL-3.0 (Artifex). O uso comercial sem disponibilizar o código-fonte exige licença comercial da Artifex |
 | **Streamlit** | interface web | Apache-2.0 |
+| **defusedxml** | leitura segura do ODG intermediário | PSF-2.0 |
 | **Liberation** e **DejaVu** (pacotes do sistema) | fontes substitutas para textos do desenho | SIL OFL 1.1 / Bitstream Vera |
 
 Os arquivos CDR em `tests/fixtures/` vêm do corpus público de documentos de teste do projeto LibreOffice (https://dev-www.libreoffice.org/corpus/, `cdrfuzzer_seed_corpus.zip`) e são usados apenas para verificação automatizada.
