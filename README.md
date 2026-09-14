@@ -55,6 +55,8 @@ docker build -f tests/Dockerfile.smoke -t cdr-smoke . && docker run --rm cdr-smo
 4. O `packages.txt` (incluído) instala o LibreOffice Draw, que já traz a libcdr, e as fontes substitutas
 5. Deploy
 
+App no ar: https://cdr-para-png.streamlit.app/
+
 ## 📋 Estrutura
 
 ```
