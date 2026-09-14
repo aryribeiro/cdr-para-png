@@ -12,6 +12,7 @@ import platform
 import threading
 import time
 import random
+from xml.sax.saxutils import escape
 
 import pymupdf
 
@@ -185,6 +186,86 @@ def inspect_header(data: bytes):
 
 
 # ---------------------------------------------------------------------------
+# FONTES: o CDR referencia fontes pelo nome (Impact, Arial, Wingdings...).
+# Sem elas no servidor, o LibreOffice substitui por outra de largura
+# diferente e o texto estoura a arte. static/fonts leva a mesma coleção do
+# app libreoffice; o fontconfig e o SAL_VCL_FONTPATH fazem o LibreOffice
+# enxergá-la. Roda 1x a cada 24h (cache_resource com TTL).
+# ---------------------------------------------------------------------------
+STATIC_FONTS_DIR = Path(__file__).resolve().parent / "static" / "fonts"
+FONT_EXTENSIONS = {".ttf", ".otf", ".ttc", ".otc"}
+
+
+@st.cache_resource(ttl=86400, show_spinner=False)
+def prepare_font_environment():
+    """Copia as fontes do repo para as pastas de fonte do usuário, gera um
+    fonts.conf com aliases e devolve o ambiente para o soffice."""
+    user_fonts = Path.home() / ".fonts"
+    user_share_fonts = Path.home() / ".local" / "share" / "fonts"
+    for d in [user_fonts, user_share_fonts]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    if STATIC_FONTS_DIR.is_dir():
+        for font_path in STATIC_FONTS_DIR.rglob("*"):
+            if font_path.is_file() and font_path.suffix.lower() in FONT_EXTENSIONS:
+                for target_dir in [user_fonts, user_share_fonts]:
+                    dest = target_dir / font_path.name
+                    if not dest.exists() or dest.stat().st_size != font_path.stat().st_size:
+                        try:
+                            shutil.copy2(font_path, dest)
+                        except OSError:
+                            pass
+
+    if platform.system() == "Linux":
+        try:
+            subprocess.run(["fc-cache", "-f", str(STATIC_FONTS_DIR), str(user_fonts)],
+                           capture_output=True, timeout=60)
+        except Exception:
+            pass
+
+    config_dir = Path.home() / ".config" / "fontconfig"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    conf_file = config_dir / "fonts.conf"
+    xml_lines = [
+        '<?xml version="1.0"?>',
+        '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">',
+        '<fontconfig>',
+        '  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>',
+        f'  <dir>{escape(str(STATIC_FONTS_DIR))}</dir>',
+        f'  <dir>{escape(str(user_fonts))}</dir>',
+        f'  <dir>{escape(str(user_share_fonts))}</dir>',
+        '  <!-- Aliases: nomes PostScript e fontes ausentes caem em parentes de métrica parecida -->',
+    ]
+    alias_maps = [
+        ("ArialMT", ["Arial", "Liberation Sans", "DejaVu Sans", "sans-serif"]),
+        ("Arial Unicode MS", ["Arial", "Liberation Sans", "DejaVu Sans", "sans-serif"]),
+        ("Helvetica", ["Arial", "Liberation Sans", "sans-serif"]),
+        ("Calibri", ["Calibri", "Carlito", "Liberation Sans", "sans-serif"]),
+        ("Tahoma", ["Tahoma", "DejaVu Sans", "sans-serif"]),
+        ("Segoe UI", ["Segoe UI", "DejaVu Sans", "sans-serif"]),
+        ("Ebrima", ["Segoe UI", "DejaVu Sans", "sans-serif"]),
+        ("TimesNewRomanPSMT", ["Times New Roman", "Liberation Serif", "serif"]),
+        ("CourierNewPSMT", ["Courier New", "Liberation Mono", "monospace"]),
+    ]
+    for source_font, target_list in alias_maps:
+        xml_lines.append('  <alias>')
+        xml_lines.append(f'    <family>{escape(source_font)}</family>')
+        xml_lines.append('    <prefer>')
+        for tgt in target_list:
+            xml_lines.append(f'      <family>{escape(tgt)}</family>')
+        xml_lines.append('    </prefer>')
+        xml_lines.append('  </alias>')
+    xml_lines.append('</fontconfig>')
+    conf_file.write_text("\n".join(xml_lines), encoding="utf-8")
+
+    env = os.environ.copy()
+    env["FONTCONFIG_FILE"] = str(conf_file)
+    env["FONTCONFIG_PATH"] = str(config_dir)
+    env["SAL_VCL_FONTPATH"] = os.pathsep.join(str(p) for p in (STATIC_FONTS_DIR, user_fonts, user_share_fonts))
+    return env
+
+
+# ---------------------------------------------------------------------------
 # RESILIÊNCIA: LIMITE DE PROCESSOS CONCORRENTES E LIMPEZA DE ÓRFÃOS
 # ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
@@ -253,7 +334,7 @@ def run_soffice_convert(input_path: Path, output_dir: Path, filter_name: str, ex
     arquivo gerado ou levanta ConversionError com a mensagem já exibida."""
     profile_dir = Path(tempfile.gettempdir()) / f"lo_profile_{uuid.uuid4().hex}"
     try:
-        env = os.environ.copy()
+        env = prepare_font_environment()
         result = None
         for cmd in ("soffice", "libreoffice"):
             cmd_args = [
@@ -347,6 +428,9 @@ def pdf_to_png(pdf_path: Path):
             "height_cm": height_pt / 72 * 2.54,
             "has_text": has_text,
             "has_images": has_images,
+            # nomes das fontes embutidas no PDF: prova de qual fonte o
+            # LibreOffice usou de fato (ex.: "Impact" e não a substituta)
+            "fonts": sorted({f[3].split("+")[-1] for f in page.get_fonts(full=False)}),
         }
         return png, info
     finally:

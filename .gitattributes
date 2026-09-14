@@ -1,3 +1,6 @@
 * text=auto eol=lf
 *.cdr binary
 *.png binary
+*.ttf binary
+*.otf binary
+*.ttc binary

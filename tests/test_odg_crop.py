@@ -113,6 +113,9 @@ def test_cracha_real_recupera_as_fotos():
     import app
     png, info = app.convert_cdr_to_png(str(PRIVATE / "cracha.cdr"))
     assert info["cropped_images"] == 2
+    # o título usa Impact; com static/fonts o LibreOffice embute a Impact de
+    # verdade em vez de substituir por uma fonte larga que estoura a arte
+    assert any("Impact" in f for f in info["fonts"]), info["fonts"]
     # o nome fica visível de novo: o PDF intermediário tinha o texto, a imagem
     # final precisa ter tinta escura na faixa do nome (y ~ 24% da altura)
     pix = pymupdf.Pixmap(png)
