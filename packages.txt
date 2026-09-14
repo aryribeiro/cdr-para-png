@@ -1,0 +1,5 @@
+libreoffice-draw
+libreoffice-core
+fontconfig
+fonts-liberation
+fonts-dejavu-core
