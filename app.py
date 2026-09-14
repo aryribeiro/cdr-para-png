@@ -432,7 +432,7 @@ def main():
     detail = f"CorelDRAW {info['version']} · {size}"
     if info["cropped_images"]:
         n = info["cropped_images"]
-        detail += f" · recorte de {n} imagem{'ns' if n > 1 else ''} restaurado"
+        detail += f" · recorte de {n} {'imagens' if n > 1 else 'imagem'} restaurado"
     st.caption(detail)
     if info["pages"] > 1:
         st.warning(f"⚠️ O desenho tem {info['pages']} páginas; só a primeira foi convertida.")
